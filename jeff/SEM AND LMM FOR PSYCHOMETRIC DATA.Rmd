@@ -1,0 +1,216 @@
+---
+title: "Weirdness of People and Methods of Weird"
+author: "Dr. Fletcher"
+date: "April 16, 2019"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+# PSYCHOMETRIC MODELING: "The weirdness of people and methods of weird"
+
+## STRUCTURAL EQUATION MODELING (SEM)
+```{r}
+library(tidyverse)
+library(lavaan)
+library(devtools)
+library(BAS)
+setwd("C:/WORK")
+
+testdat <- read.csv("C:/WORK/unconference project.csv")
+names(testdat) <- tolower(names(testdat))
+testdat.subset <- testdat %>% select(starts_with("TT"))
+
+# Filtering for complete cases
+selected_cols <- testdat %>% select(starts_with("TT")) %>% filter(complete.cases(.))
+
+data_pca <- prcomp(selected_cols, center = TRUE, scale = TRUE)
+
+summary(data_pca)
+
+data_pca$rotation
+
+plot(data_pca)
+
+summary(selected_cols)
+
+fit3 <- factanal(selected_cols, 5, rotation="varimax")
+print(fit3, digits=2, cutoff=.3, sort=TRUE)
+
+#remove those with low factor loadings and those with non-simple structure
+trimmed.fields <- subset(testdat.subset, select = -c(tt.eng.direct.mail,tt.eng.broadcast.cable.tv,tt.dms.recreational.shoppers,tt.conv.etail.only,tt.adch.online.video,tt.dms.novelty.seekers,tt.adch.online.streaming.tv,tt.dms.in.the.moment.shoppers,tt.eng.mobile.sms.mms,tt.eng.radio,tt.eng.traditional.newspaper,tt.conv.discount.supercenters,tt.conv.online.deal.voucher,tt.adch.broadcast.cable.tv,tt.adch.internet.radio,tt.adch.satellite.radio,tt.conv.ebid.sites,tt.conv.etailer,tt.conv.online.bid.marketplace,tt.conv.online.discount,tt.adch.mobile.video,tt.tp.it.s.all.in.the.name,tt.tp.never.show.up.empty.handed,tt.adch.online.display,tt.conv.brick.mortar))
+
+#run CFA on reduced item set
+fit <- factanal(na.omit(trimmed.fields), 4, scores = c("regression"), rotation="varimax")
+print(fit, digits=2, cutoff=.3, sort=TRUE)
+
+#My lavaan model
+#NO DUPLICATES BETWEEN FACTORS
+model <- '
+  # measurement model
+factor1=~tt.tp.buy.american+tt.dms.brand.loyalists+tt.adch.direct.mail+tt.dms.trendsetters+tt.tp.look.at.me.now+tt.tp.on.the.road.again+
+tt.eng.digital.newspaper+tt.dms.mainstream.adopters+tt.dms.savvy.researchers+tt.adch.mobile.display+tt.eng.streaming.tv+
+tt.eng.digital.video+tt.eng.digital.display
+
+factor2=~tt.dms.deal.seekers+tt.dms.mainstream.adopters+tt.conv.online.mid.high+tt.adch.email.engagement+tt.conv.specialty.dept.store+
+tt.conv.wholesale+tt.eng.digital.newspaper+tt.conv.mid.high.end.store+tt.conv.specialty.or.boutique
+
+factor3=~tt.conv.specialty.dept.store+tt.conv.wholesale+tt.conv.online.mid.high+tt.tp.stop.and.smell.the.roses+tt.dms.deal.seekers+
+tt.dms.mainstream.adopters+tt.tp.go.with.the.flow+tt.tp.show.me.the.money+tt.tp.no.time.like.the.present+
+tt.tp.penny.saved.a.penny.earned+tt.tp.work.hard..play.hard
+
+factor4=~tt.conv.specialty.dept.store+tt.eng.digital.newspaper+tt.conv.wholesale+tt.dms.quality.matters+tt.dms.trendsetters+
+tt.dms.organic.and.natural
+
+factor1 ~~ factor1
+factor2 ~~ factor2 
+factor3 ~~ factor3
+factor4 ~~ factor4
+'
+
+#comment out bc can't run on full dataset
+fitsem <- sem(model, na.omit(trimmed.fields))
+summary(fitsem, standardized=TRUE)
+```
+
+## LINEAR MIXED METHODS (LMM)
+```{r setup, include=FALSE}
+library(haven)
+depression <- read_sav("depression.sav")
+View(depression)
+library(haven)
+Neighborhood <- read_sav("Neighborhood.sav")
+View(Neighborhood)
+library(haven)
+School <- read_sav("School.sav")
+View(School)
+```
+
+```{r}
+library(lme4)
+library(ggplot2)
+library(lmerTest)
+library(sjPlot)
+library(sjstats)
+library(ggeffects)
+library(snakecase)
+
+#Histogram
+ggplot(Neighborhood, aes(x=distress)) +
+  geom_histogram(bins = 50)
+
+#Linear Mixed-Effects Models, neigbhorhood and distress
+base <- lmer(distress ~ 1 + (1|cluster), data = Neighborhood, REML = FALSE)
+summary(base)
+plot_model(base, type = "diag")
+plot_model(base, type = "re")
+
+#Intraclass correlation coefficient for LMM model
+ICC <- icc(base)
+
+#Linear Mixed-Effects Models, life event, distress, and support
+randint <- lmer(distress ~ levent + support + (1|cluster), REML = F, data = Neighborhood)
+summary(randint)
+plot_model(randint, type = "diag")
+plot_model(randint, type = "re")
+plot_model(randint, type = "est")
+plot_model(randint, type = "pred")
+
+#ANOVA Test #1
+anova1 <- anova(base, randint)
+summary(anova1)
+
+#Random Intersect #1
+ri <- ggpredict(randint, c("levent", "cluster [sample=10]"), type = "re")
+summary(ri)
+plot(ri)
+
+randint2 <- lmer(distress ~ levent + support + (1 + levent|cluster), REML = F, data = Neighborhood)
+summary(randint2)
+plot(randint2)
+plot_model(randint2, type = "diag")
+plot_model(randint2, type = "re")
+plot_model(randint2, type ="est")
+plot_model(randint2, type = "pred")
+
+#ANOVA TEST #2
+anova2 <- anova(randint, randint2)
+summary(anova2)
+
+#Random Intersect #2
+ri2 <- ggpredict(randint2, c("support", "cluster [sample=10]"), type = "re")
+summary(ri2)
+plot(ri2)
+
+randint3 <- lmer(distress ~ levent + support + zndisord + (1|cluster), REML = F, data = Neighborhood)
+summary(randint3)
+plot(randint3)
+plot_model(randint3, type = "diag")
+plot_model(randint3, type = "re")
+plot_model(randint3, type = "est")
+plot_model(randint3, type = "pred")
+
+#Random Intersect #3
+ri3 <- ggpredict(randint3, c("zndisord", "cluster [sample=10]"), type = "re")
+summary(ri3)
+plot(ri3)
+
+#ANOVA TEST #3
+anova3 <- anova(randint2, randint3)
+
+```
+
+## APPENDICES
+
+### STRUCTURAL EQUATION MODELING (SEM) & LINEAR MIX METHODS (LMM)
+
+Tutorials on lavaan 
+<http://lavaan.ugent.be/tutorial/tutorial.pdf>; 
+<http://lavaan.ugent.be/tutorial/syntax1.html>;
+<https://www.jstatsoft.org/article/view/v048i02/v48i02.pdf>
+
+An introduction on Structural Equation Modeling
+<http://joophox.net/publist/semfamre.pdf>
+
+Structural Equation Modeling Examples
+<http://sachaepskamp.com/semPlot/examples>
+
+Data-sets for SEM Modeling
+UCIrvine data sets
+<https://archive.ics.uci.edu/ml/index.php>
+
+Google Data Sets
+<https://www.google.com/publicdata/directory>
+
+KD Nuggets Data List
+<https://www.kdnuggets.com/datasets/index.html>
+
+Student Performance Data with time components
+<https://rstudio-pubs-static.s3.amazonaws.com/108835_65a73467d96f4c79a5f808f5b8833922.html>
+
+U.S. Gov't Open data
+<http://www.data.gov/open-gov/>
+
+Yelp dataset challenge
+<https://www.yelp.com/dataset>
+
+Oh Canada! Open Gov't data
+<http://open.canada.ca/en/open-data>
+
+Nonlinear Dimensionality Reduction by John A Lee & Michael Verleysen
+<https://amzn.to/2GfOg7Q>
+
+Modern Multivariate Statistical Techniques: Regression, Classification, and Manifold Learning by Alan Julian Izenman
+<https://amzn.to/2KEdSAr>
+
+Two-way Interactions
+<https://strengejacke.github.io/sjPlot/articles/plot_interactions.html#two-way-interactions>
+
+Best-Practice Recommendations for Estimating Cross-Level Interaction Effects Using Multilevel Modeling
+<http://www.hermanaguinis.com/JOMcrosslevel.pdf>
+
+Testing and Interpreting Interaction Effects in Multilevel Models
+<https://www.ncaase.com/docs/Stevens__Schulte_AERA_2016_final.pdf>
+
+Two-Level Hierarchical Linear Models Using SAS, Stata, HLM, R, SPSS, and Mplus
+<https://stat.utexas.edu/images/SSC/Site/hlm_comparison-1.pdf>
