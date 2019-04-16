@@ -1,11 +1,16 @@
 ---
-title: "Unconference Modeling Project"
+title: "Unconference Modeling Project: Modeling People Weirdness"
 output: html_document
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
+
+##Team
+Allison Link, Jeffrey Fletcher, Michelle Kosmicki, Craig Van Pay, Matt Harmston
+
+
 
 
 ##If you get time, add Day Zero notes here
@@ -15,7 +20,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ## Project Overview Day 1
 
-Starting as an effort to model complex data, we first stepped through procedures to arrive at an SEM solution. this would include:
+Starting as an effort to model complex psychographic data, we first stepped through procedures to arrive at an SEM solution. this would include:
 
 *Principal components analysis on records with non-missing data to determine rough structure of data, basing judgement on scree plots of eigenvalues
 
@@ -25,7 +30,7 @@ Starting as an effort to model complex data, we first stepped through procedures
 
 *We start with specifying a 3 factor model, as 4 factor wouldn't work as well. Factor 4 only had two variables associated with it after streamlining on the basis of simple factor structure.
 
-**SEM modeling using SEM and Lavaan was conducted on the full 4 factor model, and it didn't work out. We dropped factor 4, and it still reported vectors exceeding system specs (e.g., cannot handle vectors over 1.9Gb. Finally, we willy-nilly dropped some fields from the first factor and the model converged properly.  We lost a lot of interpret bility, but we were able to prove that the code works**.
+**SEM modeling using SEM and Lavaan was conducted on the full 4 factor model, and it didn't work out. We dropped factor 4, and it still reported vectors exceeding system specs (e.g., cannot handle vectors over 1.9Gb. Finally, we willy-nilly dropped some fields from the first factor and the model converged properly.  We lost a lot of interpretability, but we were able to prove that the code works**.
 
 
 
@@ -62,9 +67,12 @@ https://www.amazon.com/Data-Computing-Introduction-Wrangling-Visualization/dp/09
 
 
 
+
+
+
 ##DAY 1 EXAMPLE OUTPUT FROM CODE
 
-```{r echo=FALSE, warning=FALSE, comment=FALSE}
+```{r  warning=FALSE, message=FALSE}
 
 #load package 'HAVEN' in order to load SAS datasets
 library("haven")
@@ -206,7 +214,7 @@ summary(fits, standardized=TRUE)
 
 ##DAY 2 EXAMPLE OUTPUT FROM CODE
 
-```{r echo=FALSE, warning=FALSE, comment=FALSE}
+```{r warning=FALSE, message=FALSE}
 
 
 #load package 'HAVEN' in order to load SAS datasets
