@@ -1,0 +1,427 @@
+---
+title: "Unconference Modeling Project"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+##If you get time, add Day Zero notes here
+
+
+
+
+## Project Overview Day 1
+
+Starting as an effort to model complex data, we first stepped through procedures to arrive at an SEM solution. this would include:
+
+*Principal components analysis on records with non-missing data to determine rough structure of data, basing judgement on scree plots of eigenvalues
+
+*Confirmatory factor analysis on non-missing data to arrive at ideal number of factors for modeling, running two models with different parameter counts as a means of generating factor loadings and arrive at as simple model as possible while still maintaining interpretability
+
+*Data cleaning was engaged to permanently omit missing data.
+
+*We start with specifying a 3 factor model, as 4 factor wouldn't work as well. Factor 4 only had two variables associated with it after streamlining on the basis of simple factor structure.
+
+**SEM modeling using SEM and Lavaan was conducted on the full 4 factor model, and it didn't work out. We dropped factor 4, and it still reported vectors exceeding system specs (e.g., cannot handle vectors over 1.9Gb. Finally, we willy-nilly dropped some fields from the first factor and the model converged properly.  We lost a lot of interpret bility, but we were able to prove that the code works**.
+
+
+
+## Project Overview Day 2
+Building on the efforts from day 1, we decided to investigate other modeling approaches. In particular, we wanted to look at linear mixed models. We pulled a file containing person- and neighborhood-level outcomes. The intent was to build a linear mixed model for the data, modeling anxiety/depression/distress as a function of potentially multiple person- and neighborhood variables.  We nested person outcomes within nieghborhoods
+
+The major steps in this process included:
+*Create a base model including the neighborhood nesting value and NO OTHER FIELDS. This tests the hypothesis of there being no difference in average distress scores (e.g., intercepts) between neighborhoods.  We set the parameters to read (1|cluster), where we are fixing the intercept. In other words, each neighborhood (identified in <cluster>). Here, we printed summaries of our model outcome and ICC stats (intra-class correlations, describing the degree to which persons correlate within neighborhoods...if the correlation is 0, you don't need the mixed modeling. If not zero, you need the more complex mixed model.)
+
+*Plot diagnostics and random effects to see how well we adhere to assumptions. Some were violated, so we looked at the histo for distress. It was far from normal.  Rather than try to transform it, in interest of time, we proceeded ahead as though the normality assumption was met.
+
+*Ran a new model, this time including life events and support. Analysis of variance on the rsulting model compared to the reduced random effect-only model enabled us to see a significant improvement in ability to predict distress by adding the new fields.  Diagnostics and plots revealed the same non-normality issue as before, but also a slight divergence from homogenaeity  of variance. We could use Bartlett's test, but we chose not to investigate this in interest of time.  To test it, see here:  https://www.statmethods.net/stats/anovaAssumptions.html .  Ideas for transforming data in the event of assumption violation are http://rcompanion.org/handbook/I_12.html. Note, we assumed homogenaeity due to time.
+
+*Because we were interested in neighborhood effects (e.g., level 2) as well, we added three of them to the model. Though ANOVA on the outcome suggested a significant improvement, the Betas for two of the three were not significant in the full model. So, they were omitted from the model. Subsequent ANOVA on this model suggested that it was a signficant improvement over the person/random model.
+
+**The final analysis gave a reasonable model, though we can't trust it due to violations of assumptions. The approach works better on the "school.csv" file downloaded. Further efforts with this would include applying the model to new data for prediction and across time.  To add time as a dimension
+  *first do base model with (1|person id)
+  *add time to the model with time as a level-1 predictor as a fixed effect, or could add (1+time|subject), where for each subject, time effects the Y variable idfferently. In other words, a random slope model. 
+  https://rpsychologist.com/r-guide-longitudinal-lme-lmer
+  
+  
+Of course, a model is only as can be used with other data. If we want to apply the model to the data, here is an example:
+https://stackoverflow.com/questions/5118074/reusing-a-model-built-in-r/5118337
+
+
+
+##Other Miscellaneous Topics
+For more information on GGPLOT and DPLYR data wrangling for data visualization, this link gives insights
+https://linkalis.github.io/r-data-viz-basics-tutorials/
+
+A good data vis book
+https://www.amazon.com/Data-Computing-Introduction-Wrangling-Visualization/dp/0983965846
+
+
+
+
+##DAY 1 EXAMPLE OUTPUT FROM CODE
+
+```{r echo=FALSE, warning=FALSE, comment=FALSE}
+
+#load package 'HAVEN' in order to load SAS datasets
+library("haven")
+#load base stats package for future analyses
+library ("stats")
+#load ggplot2 package to enable plotting of outcomes
+library("ggplot2")
+#load knitr package to enable dynamic reports, including kable fct for tables
+library("knitr")
+#load dplyr to enable more efficient data summarization, etc. compared to the aggregate function
+library("dplyr")
+#load tibble for increased data frame functionality
+library("tibble")
+#load sqldf to use sql
+library("sqldf")
+#load markdown to use as an interface
+library("markdown")
+#load markdown to us
+library("rmarkdown")
+#load Rmpfr to enable pmax multi column max identifier
+library("Rmpfr")
+#load Hmisc to do correlation matrices
+library("Hmisc")
+#load packages to do stepwise regression
+library("MASS")
+library("tidyverse")
+library("caret")
+library("leaps")
+library("olsrr")
+library("broom")
+#load munsell to enable color gradients in ggplot
+library("munsell")
+#load kableExtra to get additional functionality for kable function, particularly cell_spec to control formatting of individual table cells
+#note, adding kableExtra compressed table outcomes and changed default formatting for kable.
+library("kableExtra")
+#load plot_ly for additional graphing flexibility
+library("plotly")
+library("webshot")
+
+#load DT to enable interactive tables
+library("DT")
+
+#load data.table to enable max functioning
+library("data.table")
+
+#load shiny
+library("shiny")
+
+#load rsconnect to deploy and manage shiny apps on shinyapps.io
+library("rsconnect")
+
+#load packages to enable automated testing of tool
+library("devtools")
+library("shinytest")
+library("adabag")
+
+#do SEM in R
+library("lavaan")
+#library("semPlot")  #omitted because it won't load properly, and we aren't using it.
+
+library(dplyr)
+
+#for linear mixed modeling
+library(lme4)
+library(merTools)  #needed to get p-values from lme4
+library(nlme)
+library(sjPlot)
+library(merTools)
+
+
+#read in comma-delimited file
+testdat <- read.csv("C:\\Users\\harmstom\\Desktop\\foofactors\\CBSA Demo File for Practice.csv")
+
+
+#switch names to lower case.
+names(testdat) <- tolower(names(testdat))
+
+#use dplyr code, and select only records with 'tt' prefix
+testdat.subset <- testdat %>% select(starts_with("tt"))
+
+
+
+#run PCA, omit NA's, normalize and rotate factors
+PC <- princomp(na.omit(testdat.subset))
+
+#plot eigenvalues
+plot(PC,type="lines")
+
+
+#we still have complex factors, so we need to consider how to pare down items. And, we will omit records with missing values.  We initially started with 5 factors
+#because of ambiguity in the elbow location of the scree plot (multiple factors had EVs above, but close to 1)
+fit <- factanal(na.omit(testdat.subset), 5, scores = c("regression"), rotation="varimax")
+print(fit, digits=2, cutoff=.3, sort=TRUE)
+
+
+#remove those with low factor loadings and those with non-simple structure
+trimmed.fields <- subset(testdat.subset, select = -c(tt.eng.direct.mail,tt.eng.broadcast.cable.tv,tt.dms.recreational.shoppers,tt.conv.etail.only,tt.adch.online.video,tt.dms.novelty.seekers,tt.adch.online.streaming.tv,tt.dms.in.the.moment.shoppers,tt.eng.mobile.sms.mms,tt.eng.radio,tt.eng.traditional.newspaper,tt.conv.discount.supercenters,tt.conv.online.deal.voucher,tt.adch.broadcast.cable.tv,tt.adch.internet.radio,tt.adch.satellite.radio,tt.conv.ebid.sites,tt.conv.etailer,tt.conv.online.bid.marketplace,tt.conv.online.discount,tt.adch.mobile.video,tt.tp.it.s.all.in.the.name,tt.tp.never.show.up.empty.handed,tt.adch.online.display,tt.conv.brick.mortar) )
+
+
+#run CFA on reduced item set
+fit <- factanal(na.omit(trimmed.fields), 4, scores = c("regression"), rotation="varimax")
+print(fit, digits=2, cutoff=.3, sort=TRUE)
+
+
+#define measurment model...kind of direct effects. We are not creating regression models (we don't know the directionality between factors)
+#nor correlated error terms...esp given we have so many fields.  This model did not produce viable results due to the system not wanting to handle vectors approaching 2Gb. We couldn't find the solution to this issue short of streamlining the model.  Factor 4 was removed because there were only two variables with simple structure associated with that field.
+
+model4 <- '
+factor1=~tt.tp.buy.american+tt.dms.brand.loyalists+tt.adch.direct.mail+tt.dms.trendsetters+tt.tp.look.at.me.now+tt.tp.on.the.road.again+tt.dms.savvy.researchers+tt.adch.mobile.display+tt.eng.streaming.tv+tt.eng.digital.video+tt.eng.digital.display
+
+factor2=~tt.conv.online.mid.high+tt.adch.email.engagement+tt.conv.specialty.dept.store+tt.conv.wholesale+tt.eng.digital.newspaper+tt.conv.mid.high.end.store+tt.conv.specialty.or.boutique
+
+factor3=~tt.tp.stop.and.smell.the.roses+tt.dms.deal.seekers+tt.dms.mainstream.adopters+tt.tp.go.with.the.flow+tt.tp.show.me.the.money+tt.tp.no.time.like.the.present+tt.tp.penny.saved.a.penny.earned+tt.tp.work.hard..play.hard
+
+factor1~~factor1
+factor2~~factor2
+factor3~~factor3
+
+'
+
+#create data file with no omits/missing. Speeds things up to clean out ahead of time. Earlier analyses cleaned out missing when called,
+#again as an exemplar. This could be done right up front and carry through a cleaned data during the entire project if we wished to do so.
+trimmed.fields.subset <- na.omit(trimmed.fields)
+str(trimmed.fields.subset)
+
+#run SEM using the trimmed data, tolerances set to more permissive, and use the reduced model above.
+fits <- sem(model4, data=trimmed.fields.subset,control=list(x.tol=1e-6))
+summary(fits, standardized=TRUE)
+
+
+#we removed factor 4 and now streamlined fields in factor 1 (for demo purposes, not for theoretical/statistical reasons because of the
+#vector size issue. There is no solution besides paring down our #model even further, which is often done from a theoretical/statistical perspective. #Because this was more a methodological investigation, we streamlined a model for exemplar purpose, but would have to investigate
+#simpler models down the road should this be an operational.
+
+```
+
+
+
+
+##DAY 2 EXAMPLE OUTPUT FROM CODE
+
+```{r echo=FALSE, warning=FALSE, comment=FALSE}
+
+
+#load package 'HAVEN' in order to load SAS datasets
+library("haven")
+#load base stats package for future analyses
+library ("stats")
+#load ggplot2 package to enable plotting of outcomes
+library("ggplot2")
+#load knitr package to enable dynamic reports, including kable fct for tables
+library("knitr")
+#load dplyr to enable more efficient data summarization, etc. compared to the aggregate function
+library("dplyr")
+#load tibble for increased data frame functionality
+library("tibble")
+#load sqldf to use sql
+library("sqldf")
+#load markdown to use as an interface
+library("markdown")
+#load markdown to us
+library("rmarkdown")
+#load Rmpfr to enable pmax multi column max identifier
+library("Rmpfr")
+#load Hmisc to do correlation matrices
+library("Hmisc")
+#load packages to do stepwise regression
+library("MASS")
+library("tidyverse")
+library("caret")
+library("leaps")
+library("olsrr")
+library("broom")
+#load munsell to enable color gradients in ggplot
+library("munsell")
+#load kableExtra to get additional functionality for kable function, particularly cell_spec to control formatting of individual table cells
+#note, adding kableExtra compressed table outcomes and changed default formatting for kable.
+library("kableExtra")
+#load plot_ly for additional graphing flexibility
+library("plotly")
+library("webshot")
+
+#load DT to enable interactive tables
+library("DT")
+
+#load data.table to enable max functioning
+library("data.table")
+
+#load shiny
+library("shiny")
+
+#load rsconnect to deploy and manage shiny apps on shinyapps.io
+library("rsconnect")
+
+#load packages to enable automated testing of tool
+library("devtools")
+library("shinytest")
+library("adabag")
+
+#do SEM in R
+library("lavaan")
+
+
+library(dplyr)
+
+#for linear mixed modeling
+library(lme4)
+library(lmerTest)
+#library("merTools")  #needed to get p-values from lme4
+library(nlme)
+library("sjPlot")
+library("sjstats")
+library("snakecase")
+library(ggplot2)
+library(ggeffects)
+
+
+math_student_data_url <- "https://raw.githubusercontent.com/arunk13/MSDA-Assignments/master/IS607Fall2015/Assignment3/student-mat.csv";
+math_student_data <- read.table(file = math_student_data_url, header = TRUE, sep = ";");
+por_student_data_url <- "https://raw.githubusercontent.com/arunk13/MSDA-Assignments/master/IS607Fall2015/Assignment3/student-por.csv";
+por_student_data <- read.table(file = por_student_data_url, header = TRUE, sep = ";");
+
+#data background info
+#https://rstudio-pubs-static.s3.amazonaws.com/108835_65a73467d96f4c79a5f808f5b8833922.html
+
+
+#read in data file
+school <- as.data.frame(read_spss("C:\\Users\\harmstom\\Desktop\\R Course - ACT In-house\\School.sav"))
+
+
+
+neighborhood <- as.data.frame(read_spss("C:\\Users\\harmstom\\Desktop\\R Course - ACT In-house\\Neighborhood.sav"))
+#caseid is family id
+#cluster is neighborhood
+#distress is anxiety/depression (indiv level dependent variable)
+#levent is number of negative life event (individual level)
+#support is perceived amount of individual level support (ind level)
+#zcohesion is z score of neighborhoold cohesion
+#zeconomy is zscore aggregate neighborhood economy
+#zndisord is zscore for amount of discord in a neighborhood
+
+
+
+
+
+#using nlme (non linear mixed effects), though doing linear, we have additional autoregressive structures. For longitudinal, this is particularly preferable.
+#nlme uses geneleralized least squares
+
+#does distress (DV) vary across neighborhood?  if it doesn't, we wouldn't do a mixed model. We'd ust use simple regression. #build an OLS object to get a base model to build upon.  Estimate intercept and variance around intercept
+#modeling distress with 1 gives intercept and variacnce around intercept, and the plus sign will, for this example,
+#give a random effect. To specify a random intercept is to say that we are clustering on the basis of levels with in the
+#field for which we are looking for the different incercepts.    So, we are looking to see if intercepts for each neighborhood
+#(indicated by variable "cluster") differ. if not, we don't need a random effects model.
+
+
+#run to see if cluster is warranted, and the basemodel gives us intercept and variance of the intercept, provides a model
+#from which we can compute ICC. ICC values of zero means no cluster (neighborhood) effect. However, we are 0.03, which
+#roughly means that the inclusion of the cluster accounts for some variability. so, we should include the condition on cluster.
+
+#specify REML=FALSE because to do otherwise will interfere with our ability to do an anova on the two models, and we couldn't compare full vs reduced model.
+basemodel <- lmer(distress~1+(1|cluster),REML=FALSE,data=neighborhood)
+summary(basemodel)
+icc(basemodel)
+
+#plot out the model and see diagnostics, particularly with repsect to residuals.  This is plotted, and we interpret the outcomes base don plots. If diagnostics don't follow expected outcomes (e.g, non-normality), we know that the random effect of the grouping variable needs to be in the model.
+plot_model(basemodel, type="diag")
+
+
+#plot random effects diagnostics, allowing the neighborhoods to vary by their own intercepts. In RE plot, 0 is mean distress level (mean DV levle). What is the mean for each level of the random effect (e.g., intercept for each neighborhood). 'Hood 23 has a confidence interval that does not include the overall intercept (centering on that). the centerline for overall intercept is non-zero, but it is transformed for this chart.
+plot_model(basemodel,type="re")
+
+
+#because we are violating the normality assumption (see diagnostic normality plot) and it looks more Poisson.  There are some negative values in the DV, so we can't use the Poisson.  We need to better understand the dept var, so we're going to plot it.  The histogram shows that there are indeed many negative values, which means the Poisson wouldn't work.  At this point, we have to consider how to meet assumptions by transforming the distributional shape of distress.
+
+ploting <- ggplot(data=neighborhood,aes(distress))+
+           geom_histogram(bins=50)
+
+
+#Given time, we will proceed as though we are not violating normality assumption. So, let's add individual level predictors for life events and support.  We already have the base model with a random intercept model for neighborhoods, but we are goign to build on the baseline model by adding individual level predictors. We can only model with a hierarchy that is one level above the individual. The lowest grade is individual, so we can't add random effects of any type at the indivual level because it is one observation per level, thereby overfitting the model.
+
+#So, we are evaluating fixed effects for life events and support (individual level) where we control within cluster.  With the fixed effect model, the intercept is 0.029 on average...level of distress. Using non-standardized parameters, we then know that as students go up one unit in life events (we dont't know what this means), their distress goes up 0.38 units. However, more support drives down distress by -.14 units.
+
+fullmodel <- lmer(distress~levent+support+(1|cluster),REML=FALSE,data=neighborhood)
+summary(fullmodel)
+icc(fullmodel)
+
+
+#we didn't do it here, but with a parametric model, we'd run a Bartlett's test for homogeneity of variance using the bartlett test. We likely need to hit predicted vs observed, but not sure. Basic code is below, but there is no guarantee that this is correct. We will need to investigate this.
+#bartlett.test(distress~cluster, data = neighborhood)
+
+
+#now, let's compare the models using anova. We find that we lose 2 degrees of freedom with the base model, but the inclusion  of these predictors for with the random intercept model gives a sig chi square, thus addition of predictors on top of the basic random effects model makes a significant improvement.
+anova(basemodel,fullmodel)
+
+
+#list predicted mean distress level (or, intercept) for each of the individual random effects (neighborhoods).
+ranef(fullmodel)
+
+#plot random effect estimate
+plot_model(fullmodel, type='re')
+
+#plot predicted (what are the confidence intervals juxtaposed with predicted distress...based on the model... for levent and, separately, support)
+plot_model(fullmodel, type='pred')
+
+
+#plot the predicted values for our outcome for 10 randomly sleected clusters
+ri <- ggpredict(fullmodel, c("levent", "cluster [sample=10]"), type = "re")
+plot(ri)
+
+
+#this won't converge by adding the random slope for levent within cluster nor support within cluster. This means overfitting, so we don't wnat random slopes for support and levent within clusters.  We don't care about each neighbor hood's specific connection to life events and support. Thus, we assume the relationship is the same across the neighborhood.
+ris <- lmer(distress ~ levent + support + (1 + levent|cluster),
+            REML = F, data = neighborhood)
+summary(ris)
+
+
+
+#we have used level 1 (person-level) predictors thus far. What does inclusion of level-2 (neighborhood level) do to our model?
+#Lmer recognizes that the new variables are level two.  We are dropping the random slopes levent|cluster term.
+model_level2_1 <- lmer(distress ~ levent + support + zcohesion +zeconomy + zndisord + (1|cluster),
+                       REML = F, data = neighborhood)
+summary(model_level2_1)
+
+#we can see that zcohesion and zeconomy do not have significant betas, so they will not be included in the final model. Let's rerun with them omitted:
+
+model_level2_1 <- lmer(distress ~ levent + support + zndisord + (1|cluster),
+                       REML = F, data = neighborhood)
+summary(model_level2_1)
+
+
+
+#test for significance of adding the level two variables. We get a significant chisquare, suggesting that we are getting a significant improvement with the updated model. We can then plot the predicted outcome by life event disaggregated by cluster.  We are not breaking out by the level-2 effects.
+anova(fullmodel,model_level2_1)
+ri <- ggpredict(model_level2_1, c("levent", "cluster [sample=10]"), type = "re")
+plot(ri)
+
+
+
+
+#if we wanted an interaction term, we have to put it in the individual model, and then as an option in plot_model.  with a significant interaction, neighborhood membership can be said to moderate distress.
+
+
+#to save the model parameters, write to an rda file
+#save(fullmodel, file="C:\\Users\\harmstom\\Desktop\\R Course - ACT In-house\\model_parms.rda")
+
+
+#then, we come back with same neighborhoods but different students:
+#read in new student-level data
+#newdf <- as.data.frame(newdataframe)
+
+#load the model from earlier run
+#load("C:\\Users\\harmstom\\Desktop\\R Course - ACT In-house\\model_parms.rda")
+
+#predict new outcome using the old model and new data frame
+#predict(m1, newdata = newdf)
+
+
+
+
+```
