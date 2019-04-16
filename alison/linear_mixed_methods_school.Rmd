@@ -1,0 +1,124 @@
+---
+title: "Linear Mixed Methods: School Dataset"
+output: html_notebook
+---
+
+## Load libraries
+
+```{r}
+library(haven) # To read SPSS files
+library(lme4)
+library(lmerTest)
+library(sjPlot)
+library(sjstats)
+library(ggplot2)
+```
+
+
+## Read data
+
+```{r}
+school <- read_spss("School.sav")
+school <- as.data.frame(school)
+summary(school)
+```
+
+Response variable:
+
+* langpost = language score at end of year
+
+School-level effects:
+
+* MeanIQverb = mean verbal IQ of the school
+* MeanSES = mean SES of school
+
+Individual effects (scores centered w/in their respective schools):
+
+* CSES = group mean centered (with school as reference) SES score
+* CVerbIQ = group mean centered (with school as reference) verbal IQ score
+
+Note: To get a student's individual score SES, for example, you need to add MeanSES + CSES
+
+Ideal data setup:
+
+* Level 1 data: each individual student's data is group means centered against others within their school
+* Level 2 data: each individual school is grand means centered against all other schools in the data
+
+
+## Exploratory
+
+```{r}
+ggplot(school, aes(x=langpost)) +
+  geom_histogram(bins=50)
+
+school$schoolnr <- factor(school$schoolnr) # Convert schoolnr to factor
+
+ggplot(school, aes(y=langpost, group=schoolnr)) +
+  geom_boxplot()
+```
+
+
+## Model 1: Baseline model with random intercept effects for school
+
+```{r}
+base_model <- lmer(langpost ~ 1 + (1 | schoolnr), REML=FALSE, data=school)
+summary(base_model)
+```
+
+Does school affiliation help account for some of the variance in the model?  Check the ICC.  It's > 0, so we've got a good case for a mixed effects model.
+
+```{r}
+icc(base_model)
+```
+
+Some of our schools look like they have very low intercept estimates--and the confidence intervals don't cross zero, so these are likely low-performing schools.
+
+```{r}
+plot_model(base_model, type="diag")
+plot_model(base_model, type="re")
+```
+
+
+## Model 2: Model with random intercept for school AND individual fixed effects for student attributes
+
+```{r}
+model2 <- lmer(langpost ~ CSES + CVerbIQ + (1 | schoolnr), REML=FALSE, data=school)
+summary(model2)
+```
+
+
+```{r}
+anova(base_model, model2)
+```
+
+
+## Model 3: Model with random intercept for school AND individual fixed effects for student attributes AND random slope effects for CVerbIQ by school
+
+```{r}
+model3 <- lmer(langpost ~ CSES + CVerbIQ + (1 + CVerbIQ | schoolnr), REML=FALSE, data=school)
+summary(model3)
+```
+
+Plot to help interpret the random slopes that vary by school:
+
+Plot ideas: https://strengejacke.github.io/sjPlot/articles/plot_interactions.html#two-way-interactions
+
+```{r}
+library(ggeffects)
+
+plot <- ggpredict(model3, c("CVerbIQ", "schoolnr [1, 2, 10, 12, 15, 18, 47, 103]"), type = "re")
+
+plot(plot)
+
+plot_model(model3, type="re")
+```
+
+
+```{r}
+ranef(model3)
+```
+
+
+
+
+

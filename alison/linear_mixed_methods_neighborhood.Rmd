@@ -1,0 +1,195 @@
+---
+title: "Linear Mixed Methods: Neighborhood Data"
+output: html_notebook
+---
+
+
+```{r setup, include=FALSE}
+library(haven) # To read SPSS files
+library(lme4)
+library(lmerTest)
+library(sjPlot)
+library(sjstats)
+library(ggplot2)
+```
+
+
+## Load data
+
+```{r}
+neighborhood <- read_spss("Neighborhood.sav")
+neighborhood <- as.data.frame(neighborhood)
+summary(neighborhood)
+```
+
+
+Response variable:
+
+* distress
+
+Individual-level (Level 1):
+
+* caseid = family
+* levent = negative life events
+* support = perceived amount of individual-level support
+
+Neighborhood-level (Level 2):
+
+* cluster = neighborhood number
+* zcohesion = z-score of neighborhood cohesion
+* zeconomy = economic performance
+* zdisorder = neighborhood disorder (crime, etc.)
+
+Pre-calculated interactions (we won't use, can add these on our own):
+
+* LeventxCohesion 
+* SupportxCohesion
+
+
+## Exploratory
+
+What does our reponse variable look like?
+
+```{r}
+ggplot(neighborhood, aes(x=distress)) +
+  geom_histogram(bins = 50)
+```
+
+
+
+## Model 1: Baseline model with random intercept effect for neighborhoods
+
+```{r}
+library(lme4)
+library(lmerTest)
+```
+
+Does distress vary across neighborhood?  If not, then we don't need to a "grouped" mixed method that looks at neighborhood.  We can settle for a simpler model and don't need a linear mixed method in the first place.
+
+We'll look at distress, with a single random effect for neighborhoods.  Theis gives us the "grand mean" of distress across neighborhoods, and the individual means (individual betas) of distress at each neighborhood cluster.  (This is basically just an ANOVA.)
+
+```{r}
+neighborhood$cluster <- factor(neighborhood$cluster)
+
+base_model <- lmer(distress ~ 1 + (1 | cluster), REML=FALSE, data=neighborhood)
+summary(base_model)
+```
+
+Overall, our "grand mean" (intercept) for distress--across all neighborhoods--seems to be something like 0.024.  Beyond that, each neighborhood has its own "random effects"...
+
+Now, we'll look at **interclass correlation**.  This addresses the questions: 
+
+> How similar are individuals within a specific neighborhood cluster vs. how much overall variance is there in individuals across neighborhoods?  Is variance conditioning on neighborhood membership less than variance without conditioning on neighborhood membership (i.e. just looking at each of the individuals alone, outside of their neighborhood context)?
+
+If we have an ICC > 0.01, then more than 1% of the overall variance can be attributed to cluster affiliation.  This is justification for running an LMM model:
+
+```{r}
+icc(base_model)
+```
+
+
+Looking at the diagnostics plots, it looks like our distress variable is not adhering to a gaussian distribution.  We'll proceed, but with skepticism...
+
+```{r}
+plot_model(base_model, type="diag")
+```
+
+Looking at the random effects plot, it looks like most of the neighborhoods' random effects beta estimates and confidence intervals overlap 0.  So, they don't seem to have a significant difference from the gross mean distress level--except for neighborhood 23, which is positive and its CI doesn't contain 0.
+
+```{r}
+plot_model(base_model, type="re") # look at random effects for each of the neighborhoods
+```
+
+
+
+## Model 2: Model with random intercept by neighborhood AND individual fixed effects for life events and support
+
+The intercept for distress is 0.029. For every life event, distress goes up by 0.383. For every additional level of support, distress goes down by -0.135.
+
+```{r}
+model2 <- lmer(distress ~ levent + support + (1|cluster), REML = F, data=neighborhood)
+summary(model2)
+```
+
+
+Let's see if this is a better model than the original model using ANOVA:
+
+We sacrificed two degrees of freedom moving from base_model to model2. But we gained lower deviance. And our AIC & BIC went down--and lower is better for these. So it's a win!  Model2 is better!
+
+ANOVA runs a chi-squared test: chi-squared looks at the difference in the degrees of freedom between two models, then compares to chi-squared distribution based on this difference to determine the amount of improvement you need to see in deviance to constitute a significant improvement in the model.
+
+Note: We've been buiding models with REML=FALSE so we can run ANOVAs on them. This is because ANOVA expects models fit on maximum likelihood, not restricted maximum likelihood. At the end, we can re-fit the final model using REML=TRUE.
+
+```{r}
+anova(base_model, model2)
+```
+
+Let's look at the intercept for each neighborhood in the new model:
+```{r}
+ranef(model2) # look at the random effects beta estimates for each neighborhood
+plot_model(model2, type="est") # Plot the estimates for the betas
+plot_model(model2, type="pred") # Plot the effect of each individual predictors on distress levels (based on beta estimate, slope estimate, and CI)
+```
+
+
+Let's visualize these effects across different neighborhoods.  The slope for all of the neighborhoods will be the same, but the :
+
+```{r}
+library(ggeffects)
+
+ri <- ggpredict(model2, c("levent", "cluster [sample=10]"), type = "re")
+#ri <- ggpredict(model2, c("levent", "cluster"), type = "re")
+
+plot(ri)
+```
+
+
+Final level 1 attempt: add random effects for neighborhood slopes.  This results in a "sigular fit"--overfitting.  We can't proceed any further.
+
+```{r}
+ris <- lmer(distress ~ levent + support + (1 + levent|cluster), REML = F, data = nh)
+
+summary(ris)
+```
+
+
+
+## Model 3: Model with random intercept by neighborhood AND individual fixed effects for life events and support AND fixed effects for neighborhood attributes
+
+Note: Even though zcohesion, zeconomy, and zndiscord are neighborhood-level effects, we can put them directly into the model definition without "nesting" them at level 2. lmer package detectes that the values for these are all the same within each cluster, so it will automatically use them as level 2 effects.
+
+It looks like zeconomy and zcohesion are not signifiant, but zndisord is.  We can remove those two non-significant variables before proceeding.
+
+```{r}
+model3 <- lmer(distress ~ levent + support + (1|cluster) + zcohesion + zeconomy + zndisord, REML = F, data=neighborhood)
+summary(model3)
+```
+
+
+Run an ANOVA to see if we get significant improvement over the previous two models:
+
+```{r}
+anova(base_model, model2, model3)
+```
+
+
+## Model 4: Model with everything, plus cross-level interaction effects
+
+Does a person's relationship between distress and support or life events vary as function of variables within their neighborhood?
+
+```{r}
+model4 <- lmer(distress ~ levent * zndisord + support * zndisord + (1|cluster), REML = F, data=neighborhood)
+summary(model4)
+```
+
+
+## Final Model: Best model 
+
+Run the final model definition, but using restricted maximum likelihood (instead of maximum likelihood).  This is because REML is better if we're going to use our final model for prediction. 
+
+```{r}
+model_final <- lmer(distress ~ levent * zndisord + support * zndisord + (1|cluster), REML = TRUE, data=neighborhood)
+summary(model_final)
+```
+
+
