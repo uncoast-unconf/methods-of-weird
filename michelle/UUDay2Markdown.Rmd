@@ -1,0 +1,90 @@
+---
+title: "Methods of Weird"
+author: "Michelle Kosmicki (mkosmicki)"
+date: "4/16/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+Libraries to Load
+```{r}
+library(haven)
+library(dplyr)
+library(tidyverse)
+library(lme4)
+library(nlme)
+library(lmerTest)
+library(sjPlot)
+library(sjstats)
+library(ggeffects)
+library(stats)
+```
+
+Load the SPSS data and check the head & structure
+
+```{r}
+neighborhood <- read_spss("Neighborhood.sav")
+head(neighborhood)
+```
+
+Baseline run Next
+
+```{r}
+nhoodbase <- lmer(distress~1+(1 | cluster), REML = FALSE, data = neighborhood)
+icc(nhoodbase)
+summary(nhoodbase)
+```
+
+Plot the results (diagnostic and re)
+
+```{r}
+plot_model(nhoodbase, type="diag")
+plot_model(nhoodbase, type = "re")
+
+ggplot(neighborhood, aes(x=distress)) +
+  geom_histogram(bins = 50)
+```
+
+Time to iterate and examine the vairables in the model
+
+```{r}
+nhoodrandint <- lmer(distress ~ levent + support + (1|cluster),
+                     REML = F, data = neighborhood)
+summary(nhoodrandint)
+
+anova(nhoodbase,nhoodrandint)
+
+plot_model(nhoodrandint, type = "pred")
+plot_model(nhoodrandint, type = "est")
+```
+
+Iterate more.....
+
+```{r}
+ri <- ggpredict(nhoodrandint, c("levent", "cluster [sample=10]"), type = "re")
+plot(ri)
+
+ris <- lmer(distress ~ levent + support + (1 + levent|cluster),
+            REML = F, data = neighborhood)
+
+summary(ris)
+
+ris2 <- lmer(distress ~ levent + support + zndisord + (1 | cluster),
+            REML = F, data = neighborhood)
+
+summary(ris2)
+
+anova(nhoodbase, ris2)
+plot_model(ris2, type = "pred")
+plot_model(ris2, type = "est")
+
+
+```
+
